@@ -1354,16 +1354,16 @@ int HandleDNSNSNames(DNSAnswer* answer, char* queryHead, DNSPointer* pointer, ui
 
 			RDDATA += move;
 
-			DEBUGLOG("Serial is : %hu  ", ntohs(*((uint16_t*)RDDATA)));
-			RDDATA += 2;
-			DEBUGLOG("Refresh is : %hu  ", ntohs(*((uint16_t*)RDDATA)));
-			RDDATA += 2;
-			DEBUGLOG("Retry is : %hu  ", ntohs(*((uint16_t*)RDDATA)));
-			RDDATA += 2;
-			DEBUGLOG("Expire is : %hu  ", ntohs(*((uint16_t*)RDDATA)));
-			RDDATA += 2;
-			DEBUGLOG("Minimum is : %hu  ", ntohs(*((uint16_t*)RDDATA)));
-			RDDATA += 2;
+			DEBUGLOG("Serial is : %hu  ", ntohl(*((uint32_t*)RDDATA)));
+			RDDATA += 4;
+			DEBUGLOG("Refresh is : %hu  ", ntohl(*((uint32_t*)RDDATA)));
+			RDDATA += 4;
+			DEBUGLOG("Retry is : %hu  ", ntohl(*((uint32_t*)RDDATA)));
+			RDDATA += 4;
+			DEBUGLOG("Expire is : %hu  ", ntohl(*((uint32_t*)RDDATA)));
+			RDDATA += 4;
+			DEBUGLOG("Minimum is : %hu  ", ntohl(*((uint32_t*)RDDATA)));
+			RDDATA += 4;
 			break;
 		}
 		case NS:
