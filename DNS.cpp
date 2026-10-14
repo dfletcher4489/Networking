@@ -1409,22 +1409,23 @@ int HandleDNSAnswer(DNSAnswer* answer, char* queryHead, DNSPointer* pointer, uin
 
 	int len = ntohs(answer->RDLENGTH);
 
-	llRecordBufferPtr += sizeof(DNSRecordReference);
-
 	char* RDDATA = (char*)(answer + 1);
 
 	switch (ref->type)
 	{
 	case A:
 	{
-		DNSARecord* record = (DNSARecord*)&RecordsBuffer[llRecordBufferPtr];
-		llRecordBufferPtr += sizeof(DNSARecord);
-
 		if (len != RDLEN_A)
 		{
 			ERRORLOG("DNS Answer: A record is not matching RDLEN: size %d, expected %d\n", len, RDLEN_A);
 			break;
 		}
+
+		llRecordBufferPtr += sizeof(DNSRecordReference);
+
+		DNSARecord* record = (DNSARecord*)&RecordsBuffer[llRecordBufferPtr];
+
+		llRecordBufferPtr += sizeof(DNSARecord);
 
 		uint32_t addr = 0;
 		for (int i = 0; i < len - 1; i++)
@@ -1443,6 +1444,7 @@ int HandleDNSAnswer(DNSAnswer* answer, char* queryHead, DNSPointer* pointer, uin
 	}
 	case CNAME:
 	{
+		llRecordBufferPtr += sizeof(DNSRecordReference);
 		PrintHostName(RDDATA, queryHead, 0);
 		DNSCNAMERecord* record = (DNSCNAMERecord*)&RecordsBuffer[llRecordBufferPtr];
 		llRecordBufferPtr += sizeof(DNSCNAMERecord);
@@ -1457,6 +1459,7 @@ int HandleDNSAnswer(DNSAnswer* answer, char* queryHead, DNSPointer* pointer, uin
 	}
 	case NS:
 	{
+		llRecordBufferPtr += sizeof(DNSRecordReference);
 		PrintHostName(RDDATA, queryHead, 0);
 		DNSNSRecord* record = (DNSNSRecord*)&RecordsBuffer[llRecordBufferPtr];
 		llRecordBufferPtr += sizeof(DNSNSRecord);
@@ -1471,6 +1474,7 @@ int HandleDNSAnswer(DNSAnswer* answer, char* queryHead, DNSPointer* pointer, uin
 	}
 	case MX:
 	{
+		llRecordBufferPtr += sizeof(DNSRecordReference);
 		uint16_t* pref = (uint16_t*)RDDATA;
 		RDDATA += 2;
 		ref->offset += 2;
@@ -1517,24 +1521,26 @@ int HandleDNSAdditional(DNSAnswer* answer, char* queryHead, DNSPointer* pointer,
 
 	int len = ntohs(answer->RDLENGTH);
 
-	llRecordBufferPtr += sizeof(DNSRecordReference);
-
 	char* RDDATA = (char*)(answer + 1);
 
 	switch (ref->type)
 	{
 	case A:
 	{
-		DNSARecord* record = (DNSARecord*)&RecordsBuffer[llRecordBufferPtr];
-		llRecordBufferPtr += sizeof(DNSARecord);
-
 		if (len != RDLEN_A)
 		{
 			ERRORLOG("DNS Additional: A record is not matching RDLEN: size %d, expected %d\n", len, RDLEN_A);
 			break;
 		}
 
+		llRecordBufferPtr += sizeof(DNSRecordReference);
+
+		DNSARecord* record = (DNSARecord*)&RecordsBuffer[llRecordBufferPtr];
+
+		llRecordBufferPtr += sizeof(DNSARecord);
+
 		uint32_t addr = 0;
+
 		for (int i = 0; i < len - 1; i++)
 		{
 			addr |= (RDDATA[i] & 0xff);
@@ -1551,15 +1557,18 @@ int HandleDNSAdditional(DNSAnswer* answer, char* queryHead, DNSPointer* pointer,
 	}
 	case AAAA:
 	{
-		DNSAAAARecord* record = (DNSAAAARecord*)&RecordsBuffer[llRecordBufferPtr];
-		llRecordBufferPtr += sizeof(DNSAAAARecord);
-
 		if (len != RDLEN_AAAA)
 		{
 			ERRORLOG("DNS Additional: AAAA record is not matching RDLEN: size %d, expected %d\n", len, RDLEN_AAAA);
 			break;
 		}
-		
+
+		llRecordBufferPtr += sizeof(DNSRecordReference);
+
+		DNSAAAARecord* record = (DNSAAAARecord*)&RecordsBuffer[llRecordBufferPtr];
+
+		llRecordBufferPtr += sizeof(DNSAAAARecord);
+
 		record->referenceHostNameRecordID = pointer->internalRecordBufferOffset;
 		record->dnsAnswerHostRecordID = pointer->dnsReferenceRecordOffset;
 		
