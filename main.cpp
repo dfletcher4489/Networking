@@ -73,7 +73,6 @@ HANDLE CreateThreadOfFuncForThread(int address)
 
 void GetIpAddresses(LPSOCKADDR outGoing, LPSOCKADDR dnsServer1)
 {
-	
 	ULONG size = 0;
 
 	ULONG ret = GetAdaptersAddresses(AF_INET, GAA_FLAG_SKIP_DNS_SERVER | GAA_FLAG_INCLUDE_GATEWAYS, NULL, NULL, &size);
@@ -315,7 +314,7 @@ int main() {
 
 	int answerCount = 0;
 
-	DNSQueryResult* ress = GetAddrByHostName((sockaddr_in*)&dnsserver, "www.BLAHBLAHHOOEY.com\0", A, &answerCount);
+	DNSQueryResult* ress = GetAddrByHostName((sockaddr_in*)&dnsserver, "www.google.com\0", NS, &answerCount);
 
 	for (int i = 0; i < answerCount; i++)
 	{
