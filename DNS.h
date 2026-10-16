@@ -14,29 +14,6 @@ enum RCODE
 	RCODE_REFUSED = 5
 };
 
-
-#pragma pack(push, 1)
-typedef struct dns_header_t
-{
-	uint16_t ID;
-	
-	uint16_t flags;
-	
-	uint16_t QDCOUNT;
-	uint16_t ANCOUNT;
-	uint16_t NSCOUNT;
-	uint16_t ARCOUNT;
-} DNSHeader;
-
-
-static_assert(sizeof(dns_header_t) == 12, "DNS Header not packs");
-
-typedef struct dns_question_t
-{
-	uint16_t QTYPE;
-	uint16_t QCLASS;
-} DNSQuestion;
-
 enum AnsTYPE
 {
 	A = 1,
@@ -49,6 +26,22 @@ enum AnsTYPE
 	AAAA = 28
 };
 
+typedef struct dns_header_t
+{
+	uint16_t ID;
+	uint16_t flags;
+	uint16_t QDCOUNT;
+	uint16_t ANCOUNT;
+	uint16_t NSCOUNT;
+	uint16_t ARCOUNT;
+} DNSHeader;
+
+typedef struct dns_question_t
+{
+	uint16_t QTYPE;
+	uint16_t QCLASS;
+} DNSQuestion;
+
 typedef struct dns_answer_t
 {
 	uint16_t TYPE;
@@ -57,9 +50,7 @@ typedef struct dns_answer_t
 	uint16_t RDLENGTH;
 } DNSAnswer;
 
-static_assert(sizeof(dns_answer_t) == 10, "dns answer not packed");
-
-#pragma pack(pop) 
+static const int DNS_WIRE_SIZE_BYTES = 10;
 
 typedef struct dns_packet_t
 {
@@ -73,12 +64,10 @@ typedef struct dns_answer_packet_t
 	DNSAnswer Answer;
 } DNSAnswerPacket;
 
-
-
 typedef struct dns_query_result
 {
-	char hostname[128];
-	char aliasname[128];
+	char hostname[255];
+	char aliasname[255];
 	int ipv4or6;
 	int ipv4;
 	char ipv6[16];

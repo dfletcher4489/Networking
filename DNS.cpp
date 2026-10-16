@@ -68,6 +68,12 @@
 		dest[count] = src[count]; \
 	} while(src[count++] && count < MAX_STRING_LEN) \
 
+#define MAKE_NETWORK_USHORT_FROM_BYTES(ptr) (uint16_t)((((uint16_t)((ptr)[1]))<<8) | ((uint16_t)((ptr)[0])&0xff))
+#define MAKE_NETWORK_UINT_FROM_BYTES(ptr) (uint32_t)((((uint32_t)((ptr)[3])&0xff)<<24) | \
+													 (((uint32_t)((ptr)[2])&0xff)<<16) | \
+													 (((uint32_t)((ptr)[1])&0xff)<<8) | \
+													 ((uint32_t)((ptr)[0])&0xff))
+
 enum DNSReturnCodes
 {
 	NODOMAIN = 0,
@@ -370,7 +376,7 @@ static int WriteHostName(char* str, char* queryHead, int recursionCount, char *w
 
 	return i+1;
 }
-static int HandlePointerCondition(uint16_t* iter, DNSPointer* pointer, DNSFSM* fsm);
+static int HandlePointerCondition(uint16_t posPointer, DNSPointer* pointer, DNSFSM* fsm);
 static int HandleDNSAnswer(DNSAnswer* answer, char* queryHead, DNSPointer* pointer, DNSFSM* fsm);
 static int HandleDNSNSNames(DNSAnswer* answer, char* queryHead, DNSPointer* pointer, DNSFSM* fsm);
 static int HandleDNSAdditional(DNSAnswer* answer, char* queryHead, DNSPointer* pointer, DNSFSM* fsm);
@@ -381,6 +387,8 @@ static void PrintRecordHostname(char* ptr);
 static int DeDeuplicateIPv4(char* recordBuffer, uint16_t count, uint32_t* recordoffsets, int addr);
 static int DeDeuplicateIPv6(char* recordBuffer, uint16_t count, uint32_t* recordoffsets, char* addr);
 static int ProcessRawRecordsBuffer(DNSFSM* fsmPtr);
+static void CreateDNSHeaderFromNetworkBytes(DNSHeader* header, char* rawPtr);
+static void CreateDNSAnswerFromNetworkBytes(DNSAnswer* answer, char* rawPtr);
 
 static int RecurseFindAddress(int* recordPtr)
 {
@@ -556,7 +564,7 @@ static int CreateDNSQuestion(int flags, const char* domainname, int queryCount)
 
 	header->flags = htons(MakeDNSFlags(0, 0, 0, 0, 0, 0, 0, 0));
 	header->QDCOUNT = htons(1);
-	header->ID = htons((rand() % (USHRT_MAX + 1)));
+	header->ID = htons(rand() % USHRT_MAX);
 
 	int QuestionStride = CreateQueryHostname(domainname, q + sizeof(DNSHeader));
 
@@ -627,25 +635,27 @@ static int AskDNSQuestionAndHandleResponse(sockaddr_in* dnsServer, DNSFSM *dnsFS
 
 	int found = 0;
 
-	DNSHeader* headera = (DNSHeader*)(lQueryAnswerHead);
+	DNSHeader headera;
 
-	DEBUGLOG("Header ID: %hx", ntohs(headera->ID));
-	DEBUGLOG("flags ID: %hx", ntohs(headera->flags));
-	PrintDNSFlags(ntohs(headera->flags));
-	DEBUGLOG("QDCOUNT ID: %hx", ntohs(headera->QDCOUNT));
-	DEBUGLOG("ANCOUNT ID: %hx", ntohs(headera->ANCOUNT));
-	DEBUGLOG("NSCOUNT ID: %hx", ntohs(headera->NSCOUNT));
-	DEBUGLOG("ARCOUNT ID: %hx", ntohs(headera->ARCOUNT));
+	CreateDNSHeaderFromNetworkBytes(&headera, lQueryAnswerHead);
 
-	int ret = PrintHostName((char*)(lQueryAnswerHead + sizeof(DNSHeader)), lQueryAnswerHead, 0);
+	DEBUGLOG("Header ID: %hx", ntohs(headera.ID));
+	DEBUGLOG("flags ID: %hx", ntohs(headera.flags));
+	PrintDNSFlags(ntohs(headera.flags));
+	DEBUGLOG("QDCOUNT ID: %hx", ntohs(headera.QDCOUNT));
+	DEBUGLOG("ANCOUNT ID: %hx", ntohs(headera.ANCOUNT));
+	DEBUGLOG("NSCOUNT ID: %hx", ntohs(headera.NSCOUNT));
+	DEBUGLOG("ARCOUNT ID: %hx", ntohs(headera.ARCOUNT));
 
-	uint16_t rcode = ntohs(headera->flags) & 0xf;
+	int ret = PrintHostName(lQueryAnswerHead + sizeof(DNSHeader), lQueryAnswerHead, 0);
 
-	uint16_t anCount = ntohs(headera->ANCOUNT);
+	uint16_t rcode = ntohs(headera.flags) & 0xf;
 
-	uint16_t nDomainCount = ntohs(headera->NSCOUNT);
+	uint16_t anCount = ntohs(headera.ANCOUNT);
 
-	uint16_t adRecordCount = ntohs(headera->ARCOUNT);
+	uint16_t nDomainCount = ntohs(headera.NSCOUNT);
+
+	uint16_t adRecordCount = ntohs(headera.ARCOUNT);
 
 	if (rcode == RCODE_NOERROR && anCount >= 1)
 		found = 1;
@@ -693,72 +703,68 @@ static int AskDNSQuestionAndHandleResponse(sockaddr_in* dnsServer, DNSFSM *dnsFS
 
 	for (uint16_t i = 0; i < anCount; i++)
 	{
-		char* ptr = lQueryAnswerHead + dnsFSM->lAnswerProcessed;
-
 		DNSPointer dnsPointer =
 		{
 			MAX_UINT, MAX_UINT, MAX_UINT
 		};
 
-		int move = HandlePointerCondition((uint16_t*)ptr, &dnsPointer, dnsFSM);
+		uint16_t headPointer = MAKE_NETWORK_USHORT_FROM_BYTES(lQueryAnswerHead + dnsFSM->lAnswerProcessed);
 
-		ptr += move;
+		int move = HandlePointerCondition(headPointer, &dnsPointer, dnsFSM);
 
-		dnsFSM->lAnswerProcessed += move;
+		DNSAnswer answer;
 
-		DNSAnswer* answer = (DNSAnswer*)ptr;
+		CreateDNSAnswerFromNetworkBytes(&answer, lQueryAnswerHead + dnsFSM->lAnswerProcessed + move);
 
-		dnsFSM->lAnswerProcessed += sizeof(DNSAnswer);
+		dnsFSM->lAnswerProcessed += DNS_WIRE_SIZE_BYTES + move;
 
 		dnsPointer.recordOffset = dnsFSM->lAnswerProcessed;
 
-		dnsFSM->lAnswerProcessed += HandleDNSAnswer(answer, lQueryAnswerHead, &dnsPointer, dnsFSM);
+		dnsFSM->lAnswerProcessed += HandleDNSAnswer(&answer, lQueryAnswerHead, &dnsPointer, dnsFSM);
 	}
 
 	for (uint16_t i = 0; i < nDomainCount; i++)
 	{
-		char* ptr = lQueryAnswerHead + dnsFSM->lAnswerProcessed;
-
 		DNSPointer dnsPointer =
 		{
 			MAX_UINT, MAX_UINT, MAX_UINT
 		};
 
-		int move = HandlePointerCondition((uint16_t*)ptr, &dnsPointer, dnsFSM);
+		uint16_t headPointer = MAKE_NETWORK_USHORT_FROM_BYTES(lQueryAnswerHead + dnsFSM->lAnswerProcessed);
 
-		ptr += move;
-		dnsFSM->lAnswerProcessed += move;
+		int move = HandlePointerCondition(headPointer, &dnsPointer, dnsFSM);
 
-		DNSAnswer* answer = (DNSAnswer*)ptr;
+		DNSAnswer answer;
 
-		dnsFSM->lAnswerProcessed += sizeof(DNSAnswer);
+		CreateDNSAnswerFromNetworkBytes(&answer, lQueryAnswerHead + dnsFSM->lAnswerProcessed + move);
+
+		dnsFSM->lAnswerProcessed += DNS_WIRE_SIZE_BYTES + move;
 
 		dnsPointer.recordOffset = dnsFSM->lAnswerProcessed;
 
-		dnsFSM->lAnswerProcessed += HandleDNSNSNames(answer, lQueryAnswerHead, &dnsPointer, dnsFSM);
+		dnsFSM->lAnswerProcessed += HandleDNSNSNames(&answer, lQueryAnswerHead, &dnsPointer, dnsFSM);
 	}
 
 	for (uint16_t i = 0; i < adRecordCount; i++)
 	{
-		char* ptr = lQueryAnswerHead + dnsFSM->lAnswerProcessed;
-
 		DNSPointer dnsPointer =
 		{
 			MAX_UINT, MAX_UINT, MAX_UINT
 		};
 
-		int move = HandlePointerCondition((uint16_t*)ptr, &dnsPointer, dnsFSM);
+		uint16_t headPointer = MAKE_NETWORK_USHORT_FROM_BYTES(lQueryAnswerHead + dnsFSM->lAnswerProcessed);
 
-		ptr += move;
-		dnsFSM->lAnswerProcessed += move;
+		int move = HandlePointerCondition(headPointer, &dnsPointer, dnsFSM);
 
-		DNSAnswer* answer = (DNSAnswer*)ptr;
+		DNSAnswer answer;
 
-		dnsFSM->lAnswerProcessed += sizeof(DNSAnswer);
+		CreateDNSAnswerFromNetworkBytes(&answer, lQueryAnswerHead + dnsFSM->lAnswerProcessed + move);
+
+		dnsFSM->lAnswerProcessed += DNS_WIRE_SIZE_BYTES + move;
 
 		dnsPointer.recordOffset = dnsFSM->lAnswerProcessed;
 
-		dnsFSM->lAnswerProcessed += HandleDNSAdditional(answer, lQueryAnswerHead, &dnsPointer, dnsFSM);
+		dnsFSM->lAnswerProcessed += HandleDNSAdditional(&answer, lQueryAnswerHead, &dnsPointer, dnsFSM);
 	}
 
 	ProcessRawRecordsBuffer(dnsFSM);
@@ -1281,21 +1287,21 @@ void PrintIPv6(char* addr)
 #endif
 }
 
-int HandlePointerCondition(uint16_t* iter, DNSPointer* pointer, DNSFSM* fsm)
+int HandlePointerCondition(uint16_t posPointer, DNSPointer* pointer, DNSFSM* fsm)
 {
-	uint16_t lPointer = ntohs(*iter);;
+	posPointer = ntohs(posPointer);
 	
 	int ret = 0;
 
-	if (lPointer & 0xC000)
+	if (posPointer & 0xC000)
 	{
-		lPointer &= 0x3fff;
+		posPointer &= 0x3fff;
 
 		for (uint32_t j = fsm->lRecordBufferStart, i = 0; j < fsm->lRecordBufferHead; i++)
 		{
 			DNSRecordReference* ref = (DNSRecordReference*)&RecordsBuffer[j];
 			
-			if (ref->offset == lPointer)
+			if (ref->offset == posPointer)
 			{
 				DEBUGLOG("This is a reference to the %d response", i+1);
 				pointer->internalRecordBufferOffset = j;
@@ -1305,7 +1311,7 @@ int HandlePointerCondition(uint16_t* iter, DNSPointer* pointer, DNSFSM* fsm)
 			j += ref->size;
 		}
 
-		pointer->dnsReferenceRecordOffset = lPointer;
+		pointer->dnsReferenceRecordOffset = posPointer;
 
 		ret = 2;
 	}
@@ -1329,7 +1335,7 @@ int HandleDNSNSNames(DNSAnswer* answer, char* queryHead, DNSPointer* pointer, DN
 
 	int len = ntohs(answer->RDLENGTH);
 
-	char* RDDATA = (char*)(answer + 1);
+	char* RDDATA = queryHead + fsm->lAnswerProcessed;
 
 	switch (ref->type)
 	{
@@ -1406,7 +1412,7 @@ int HandleDNSAnswer(DNSAnswer* answer, char* queryHead, DNSPointer* pointer, DNS
 
 	int len = ntohs(answer->RDLENGTH);
 
-	char* RDDATA = (char*)(answer + 1);
+	char* RDDATA = queryHead + fsm->lAnswerProcessed;
 
 	switch (ref->type)
 	{
@@ -1480,14 +1486,18 @@ int HandleDNSAnswer(DNSAnswer* answer, char* queryHead, DNSPointer* pointer, DNS
 	case MX:
 	{
 		fsm->lRecordBufferHead += sizeof(DNSRecordReference);
-		uint16_t* pref = (uint16_t*)RDDATA;
+		
+		uint16_t pref = MAKE_NETWORK_USHORT_FROM_BYTES(RDDATA);
+		
 		RDDATA += 2;
 		ref->offset += 2;
+		
 		PrintHostName(RDDATA, queryHead, 0);
+
 		DNSMXRecord* record = (DNSMXRecord*)&RecordsBuffer[fsm->lRecordBufferHead];
 		fsm->lRecordBufferHead += sizeof(DNSMXRecord);
 
-		record->preference = ntohs(*pref);
+		record->preference = ntohs(pref);
 		record->arecordcount = 0;
 		record->queryAlias = pointer->internalRecordBufferOffset;
 		record->cnameAlias = pointer->dnsReferenceRecordOffset;
@@ -1524,7 +1534,7 @@ int HandleDNSAdditional(DNSAnswer* answer, char* queryHead, DNSPointer* pointer,
 
 	int len = ntohs(answer->RDLENGTH);
 
-	char* RDDATA = (char*)(answer + 1);
+	char* RDDATA = queryHead + fsm->lAnswerProcessed;
 
 	switch (ref->type)
 	{
@@ -1543,7 +1553,6 @@ int HandleDNSAdditional(DNSAnswer* answer, char* queryHead, DNSPointer* pointer,
 		fsm->lRecordBufferHead += sizeof(DNSARecord);
 
 		uint32_t addr = 0;
-
 		for (int i = 0; i < len - 1; i++)
 		{
 			addr |= (RDDATA[i] & 0xff);
@@ -1681,4 +1690,22 @@ int ProcessRawRecordsBuffer(DNSFSM* fsmPtr)
 	}
 
 	return 0;
+}
+
+void CreateDNSHeaderFromNetworkBytes(DNSHeader* header, char* rawPtr)
+{
+	header->ID = MAKE_NETWORK_USHORT_FROM_BYTES(rawPtr);
+	header->flags = MAKE_NETWORK_USHORT_FROM_BYTES(rawPtr + 2);
+	header->QDCOUNT = MAKE_NETWORK_USHORT_FROM_BYTES(rawPtr + 4);
+	header->ANCOUNT = MAKE_NETWORK_USHORT_FROM_BYTES(rawPtr + 6);
+	header->NSCOUNT = MAKE_NETWORK_USHORT_FROM_BYTES(rawPtr + 8);
+	header->ARCOUNT = MAKE_NETWORK_USHORT_FROM_BYTES(rawPtr + 10);
+}
+
+void CreateDNSAnswerFromNetworkBytes(DNSAnswer* answer, char* rawPtr)
+{
+	answer->TYPE = MAKE_NETWORK_USHORT_FROM_BYTES(rawPtr);
+	answer->CLASS = MAKE_NETWORK_USHORT_FROM_BYTES(rawPtr + 2);
+	answer->TTL = MAKE_NETWORK_UINT_FROM_BYTES(rawPtr + 4);
+	answer->RDLENGTH = MAKE_NETWORK_USHORT_FROM_BYTES(rawPtr + 8);
 }
