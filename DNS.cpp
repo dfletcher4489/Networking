@@ -68,11 +68,11 @@
 		dest[count] = src[count]; \
 	} while(src[count++] && count < MAX_STRING_LEN) \
 
-#define MAKE_NETWORK_USHORT_FROM_BYTES(ptr) (uint16_t)((((uint16_t)((ptr)[1]))<<8) | ((uint16_t)((ptr)[0])&0xff))
-#define MAKE_NETWORK_UINT_FROM_BYTES(ptr) (uint32_t)((((uint32_t)((ptr)[3])&0xff)<<24) | \
-													 (((uint32_t)((ptr)[2])&0xff)<<16) | \
-													 (((uint32_t)((ptr)[1])&0xff)<<8) | \
-													 ((uint32_t)((ptr)[0])&0xff))
+#define MAKE_NETWORK_USHORT_FROM_BYTES(ptr) (uint16_t)((((uint16_t)((ptr)[0]))<<8) | ((uint16_t)((ptr)[1])&0xff))
+#define MAKE_NETWORK_UINT_FROM_BYTES(ptr) (uint32_t)((((uint32_t)((ptr)[0])&0xff)<<24) | \
+													 (((uint32_t)((ptr)[1])&0xff)<<16) | \
+													 (((uint32_t)((ptr)[2])&0xff)<<8) | \
+													 ((uint32_t)((ptr)[3])&0xff))
 
 enum DNSReturnCodes
 {
@@ -376,6 +376,7 @@ static int WriteHostName(char* str, char* queryHead, int recursionCount, char *w
 
 	return i+1;
 }
+
 static int HandlePointerCondition(uint16_t posPointer, DNSPointer* pointer, DNSFSM* fsm);
 static int HandleDNSAnswer(DNSAnswer* answer, char* queryHead, DNSPointer* pointer, DNSFSM* fsm);
 static int HandleDNSNSNames(DNSAnswer* answer, char* queryHead, DNSPointer* pointer, DNSFSM* fsm);
@@ -548,7 +549,7 @@ static int RecurseDNSResolver(sockaddr_in* dnsResolver, DNSFSM* dnsFSM)
 
 	PrintIPv4(addr);
 
-	dnsResolver->sin_addr.s_addr = ntohl(addr);
+	dnsResolver->sin_addr.s_addr = (addr);
 
 	return (addr ? 0 : -1);
 	*/
@@ -640,23 +641,23 @@ static int AskDNSQuestionAndHandleResponse(sockaddr_in* dnsServer, DNSFSM *dnsFS
 
 	CreateDNSHeaderFromNetworkBytes(&headera, lQueryAnswerHead);
 
-	DEBUGLOG("Header ID: %hx", ntohs(headera.ID));
-	DEBUGLOG("flags ID: %hx", ntohs(headera.flags));
-	PrintDNSFlags(ntohs(headera.flags));
-	DEBUGLOG("QDCOUNT ID: %hx", ntohs(headera.QDCOUNT));
-	DEBUGLOG("ANCOUNT ID: %hx", ntohs(headera.ANCOUNT));
-	DEBUGLOG("NSCOUNT ID: %hx", ntohs(headera.NSCOUNT));
-	DEBUGLOG("ARCOUNT ID: %hx", ntohs(headera.ARCOUNT));
+	DEBUGLOG("Header ID: %hx", headera.ID);
+	DEBUGLOG("flags ID: %hx", headera.flags);
+	PrintDNSFlags(headera.flags);
+	DEBUGLOG("QDCOUNT ID: %hx", headera.QDCOUNT);
+	DEBUGLOG("ANCOUNT ID: %hx", headera.ANCOUNT);
+	DEBUGLOG("NSCOUNT ID: %hx", headera.NSCOUNT);
+	DEBUGLOG("ARCOUNT ID: %hx", headera.ARCOUNT);
 
 	int ret = PrintHostName(lQueryAnswerHead + sizeof(DNSHeader), lQueryAnswerHead, 0);
 
-	uint16_t rcode = ntohs(headera.flags) & 0xf;
+	uint16_t rcode = headera.flags & 0xf;
 
-	uint16_t anCount = ntohs(headera.ANCOUNT);
+	uint16_t anCount = headera.ANCOUNT;
 
-	uint16_t nDomainCount = ntohs(headera.NSCOUNT);
+	uint16_t nDomainCount = headera.NSCOUNT;
 
-	uint16_t adRecordCount = ntohs(headera.ARCOUNT);
+	uint16_t adRecordCount = headera.ARCOUNT;
 
 	if (rcode == RCODE_NOERROR && anCount >= 1)
 		found = 1;
@@ -1290,11 +1291,10 @@ void PrintIPv6(char* addr)
 
 int HandlePointerCondition(uint16_t posPointer, DNSPointer* pointer, DNSFSM* fsm)
 {
-	posPointer = ntohs(posPointer);
 	
 	int ret = 0;
 
-	if (posPointer & 0xC000)
+	if ((posPointer & 0xC000) == 0xC000)
 	{
 		posPointer &= 0x3fff;
 
@@ -1322,19 +1322,19 @@ int HandlePointerCondition(uint16_t posPointer, DNSPointer* pointer, DNSFSM* fsm
 
 int HandleDNSNSNames(DNSAnswer* answer, char* queryHead, DNSPointer* pointer, DNSFSM* fsm)
 {
-	DEBUGLOG("Type %hx", ntohs(answer->TYPE));
-	DEBUGLOG("Class %hx", ntohs(answer->CLASS));
-	DEBUGLOG("TTL %lx", ntohl(answer->TTL));
-	DEBUGLOG("RDLENGTH %hx", ntohs(answer->RDLENGTH));
+	DEBUGLOG("Type %hx", answer->TYPE);
+	DEBUGLOG("Class %hx", answer->CLASS);
+	DEBUGLOG("TTL %lx", answer->TTL);
+	DEBUGLOG("RDLENGTH %hx", answer->RDLENGTH);
 
 	uint32_t startReference = fsm->lRecordBufferHead;
 
 	DNSRecordReference* ref = (DNSRecordReference*)&RecordsBuffer[fsm->lRecordBufferHead];
 	ref->packet = (void*)queryHead;
 	ref->offset = pointer->recordOffset;
-	ref->type = ntohs(answer->TYPE);
+	ref->type = answer->TYPE;
 
-	int len = ntohs(answer->RDLENGTH);
+	int len = answer->RDLENGTH;
 
 	char* RDDATA = queryHead + fsm->lAnswerProcessed;
 
@@ -1363,11 +1363,11 @@ int HandleDNSNSNames(DNSAnswer* answer, char* queryHead, DNSPointer* pointer, DN
 
 			CreateDNSSOARecordFromNetworkBytes(&soa, RDDATA);
 
-			DEBUGLOG("Serial is : %hu", ntohl(soa.serial));
-			DEBUGLOG("Refresh is : %hu", ntohl(soa.refresh));
-			DEBUGLOG("Retry is : %hu", ntohl(soa.retry));
-			DEBUGLOG("Expire is : %hu", ntohl(soa.expire));
-			DEBUGLOG("Minimum is : %hu", ntohl(soa.minimum));
+			DEBUGLOG("Serial is : %u", soa.serial);
+			DEBUGLOG("Refresh is : %u", soa.refresh);
+			DEBUGLOG("Retry is : %u",  soa.retry);
+			DEBUGLOG("Expire is : %u", soa.expire);
+			DEBUGLOG("Minimum is : %u", soa.minimum);
 
 			break;
 		}
@@ -1399,19 +1399,19 @@ int HandleDNSNSNames(DNSAnswer* answer, char* queryHead, DNSPointer* pointer, DN
 
 int HandleDNSAnswer(DNSAnswer* answer, char* queryHead, DNSPointer* pointer, DNSFSM* fsm)
 {
-	DEBUGLOG("Type %hx", ntohs(answer->TYPE));
-	DEBUGLOG("Class %hx", ntohs(answer->CLASS));
-	DEBUGLOG("TTL %lx", ntohl(answer->TTL));
-	DEBUGLOG("RDLENGTH %hx", ntohs(answer->RDLENGTH));
+	DEBUGLOG("Type %hx", answer->TYPE);
+	DEBUGLOG("Class %hx", answer->CLASS);
+	DEBUGLOG("TTL %lx", answer->TTL);
+	DEBUGLOG("RDLENGTH %hx", answer->RDLENGTH);
 
 	uint32_t startReference = fsm->lRecordBufferHead;
 
 	DNSRecordReference* ref = (DNSRecordReference*)&RecordsBuffer[fsm->lRecordBufferHead];
 	ref->packet = (void*)queryHead;
 	ref->offset = pointer->recordOffset;
-	ref->type = ntohs(answer->TYPE);
+	ref->type = answer->TYPE;
 
-	int len = ntohs(answer->RDLENGTH);
+	int len = answer->RDLENGTH;
 
 	char* RDDATA = queryHead + fsm->lAnswerProcessed;
 
@@ -1496,9 +1496,10 @@ int HandleDNSAnswer(DNSAnswer* answer, char* queryHead, DNSPointer* pointer, DNS
 		PrintHostName(RDDATA, queryHead, 0);
 
 		DNSMXRecord* record = (DNSMXRecord*)&RecordsBuffer[fsm->lRecordBufferHead];
+
 		fsm->lRecordBufferHead += sizeof(DNSMXRecord);
 
-		record->preference = ntohs(pref);
+		record->preference = (pref);
 		record->arecordcount = 0;
 		record->queryAlias = pointer->internalRecordBufferOffset;
 		record->cnameAlias = pointer->dnsReferenceRecordOffset;
@@ -1521,19 +1522,19 @@ int HandleDNSAnswer(DNSAnswer* answer, char* queryHead, DNSPointer* pointer, DNS
 
 int HandleDNSAdditional(DNSAnswer* answer, char* queryHead, DNSPointer* pointer, DNSFSM* fsm)
 {
-	DEBUGLOG("Type %hx", ntohs(answer->TYPE));
-	DEBUGLOG("Class %hx", ntohs(answer->CLASS));
-	DEBUGLOG("TTL %lx", ntohl(answer->TTL));
-	DEBUGLOG("RDLENGTH %hx", ntohs(answer->RDLENGTH));
+	DEBUGLOG("Type %hx", answer->TYPE);
+	DEBUGLOG("Class %hx", answer->CLASS);
+	DEBUGLOG("TTL %lx", answer->TTL);
+	DEBUGLOG("RDLENGTH %hx", answer->RDLENGTH);
 
 	uint32_t startReference = fsm->lRecordBufferHead;
 
 	DNSRecordReference* ref = (DNSRecordReference*)&RecordsBuffer[fsm->lRecordBufferHead];
 	ref->packet = (void*)queryHead;
 	ref->offset = pointer->recordOffset;
-	ref->type = ntohs(answer->TYPE);
+	ref->type = answer->TYPE;
 
-	int len = ntohs(answer->RDLENGTH);
+	int len = answer->RDLENGTH;
 
 	char* RDDATA = queryHead + fsm->lAnswerProcessed;
 
@@ -1550,6 +1551,8 @@ int HandleDNSAdditional(DNSAnswer* answer, char* queryHead, DNSPointer* pointer,
 		fsm->lRecordBufferHead += sizeof(DNSRecordReference);
 
 		DNSARecord* record = (DNSARecord*)&RecordsBuffer[fsm->lRecordBufferHead];
+
+		memset(record, 0, sizeof(record));
 
 		fsm->lRecordBufferHead += sizeof(DNSARecord);
 
