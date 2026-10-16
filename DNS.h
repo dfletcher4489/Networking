@@ -64,7 +64,7 @@ typedef struct dns_answer_packet_t
 	DNSAnswer Answer;
 } DNSAnswerPacket;
 
-typedef struct dns_query_result
+typedef struct dns_query_result_t
 {
 	char hostname[255];
 	char aliasname[255];
@@ -72,6 +72,15 @@ typedef struct dns_query_result
 	int ipv4;
 	char ipv6[16];
 } DNSQueryResult;
+
+typedef struct dns_statement_of_authority_t
+{
+	uint32_t serial;
+	uint32_t refresh;
+	uint32_t retry;
+	uint32_t expire;
+	uint32_t minimum;
+} DNSSOA;
 
 DNSQueryResult* GetAddrByHostName(sockaddr_in* s, const char* str, int flags, int* answerCount);
 

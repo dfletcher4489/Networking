@@ -314,7 +314,7 @@ int main() {
 
 	int answerCount = 0;
 
-	DNSQueryResult* ress = GetAddrByHostName((sockaddr_in*)&dnsserver, "www.google.com\0", A, &answerCount);
+	DNSQueryResult* ress = GetAddrByHostName((sockaddr_in*)&dnsserver, "www.google.com\0", NS, &answerCount);
 
 	for (int i = 0; i < answerCount; i++)
 	{

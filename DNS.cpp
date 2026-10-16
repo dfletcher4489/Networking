@@ -389,6 +389,7 @@ static int DeDeuplicateIPv6(char* recordBuffer, uint16_t count, uint32_t* record
 static int ProcessRawRecordsBuffer(DNSFSM* fsmPtr);
 static void CreateDNSHeaderFromNetworkBytes(DNSHeader* header, char* rawPtr);
 static void CreateDNSAnswerFromNetworkBytes(DNSAnswer* answer, char* rawPtr);
+static void CreateDNSSOARecordFromNetworkBytes(DNSSOA* soa, char* rawPtr);
 
 static int RecurseFindAddress(int* recordPtr)
 {
@@ -1350,24 +1351,24 @@ int HandleDNSNSNames(DNSAnswer* answer, char* queryHead, DNSPointer* pointer, DN
 
 			fsm->lRecordBufferHead += sizeof(DNSRecordReference);
 
-			int move = PrintHostName(RDDATA, queryHead, 0);
+			int move = PrintHostName(RDDATA, queryHead, 0); //mname
 
 			RDDATA += move;
 
-			move = PrintHostName(RDDATA, queryHead, 0);
+			move = PrintHostName(RDDATA, queryHead, 0); //rname
 
 			RDDATA += move;
 
-			DEBUGLOG("Serial is : %hu  ", ntohl(*((uint32_t*)RDDATA)));
-			RDDATA += 4;
-			DEBUGLOG("Refresh is : %hu  ", ntohl(*((uint32_t*)RDDATA)));
-			RDDATA += 4;
-			DEBUGLOG("Retry is : %hu  ", ntohl(*((uint32_t*)RDDATA)));
-			RDDATA += 4;
-			DEBUGLOG("Expire is : %hu  ", ntohl(*((uint32_t*)RDDATA)));
-			RDDATA += 4;
-			DEBUGLOG("Minimum is : %hu  ", ntohl(*((uint32_t*)RDDATA)));
-			RDDATA += 4;
+			DNSSOA soa;
+
+			CreateDNSSOARecordFromNetworkBytes(&soa, RDDATA);
+
+			DEBUGLOG("Serial is : %hu", ntohl(soa.serial));
+			DEBUGLOG("Refresh is : %hu", ntohl(soa.refresh));
+			DEBUGLOG("Retry is : %hu", ntohl(soa.retry));
+			DEBUGLOG("Expire is : %hu", ntohl(soa.expire));
+			DEBUGLOG("Minimum is : %hu", ntohl(soa.minimum));
+
 			break;
 		}
 		case NS:
@@ -1708,4 +1709,13 @@ void CreateDNSAnswerFromNetworkBytes(DNSAnswer* answer, char* rawPtr)
 	answer->CLASS = MAKE_NETWORK_USHORT_FROM_BYTES(rawPtr + 2);
 	answer->TTL = MAKE_NETWORK_UINT_FROM_BYTES(rawPtr + 4);
 	answer->RDLENGTH = MAKE_NETWORK_USHORT_FROM_BYTES(rawPtr + 8);
+}
+
+void CreateDNSSOARecordFromNetworkBytes(DNSSOA* soa, char* rawPtr)
+{
+	soa->serial = MAKE_NETWORK_UINT_FROM_BYTES(rawPtr);
+	soa->refresh = MAKE_NETWORK_UINT_FROM_BYTES(rawPtr + 4);
+	soa->retry = MAKE_NETWORK_UINT_FROM_BYTES(rawPtr + 8);
+	soa->expire = MAKE_NETWORK_UINT_FROM_BYTES(rawPtr + 12);
+	soa->minimum = MAKE_NETWORK_UINT_FROM_BYTES(rawPtr + 16);
 }
