@@ -50,7 +50,7 @@ typedef struct dns_answer_t
 	uint16_t RDLENGTH;
 } DNSAnswer;
 
-static const int DNS_WIRE_SIZE_BYTES = 10;
+static const int DNS_ANSWER_WIRE_SIZE_BYTES = 10;
 
 typedef struct dns_packet_t
 {
